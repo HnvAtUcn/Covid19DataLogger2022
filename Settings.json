@@ -1,0 +1,12 @@
+{
+  "DataFolder": "D:\\Data\\coronavirus\\",
+  "SaveFiles": false,
+  "DataBases": [
+    {
+      "InitialCatalog": "Covid-19_Stats",
+      "DataSource": "SomeLocalSQLServer\\SomeSQLInstance",
+      "UserID": "Covid19_Writer",
+      "Password": "Corona_2020_W"
+    }
+  ]
+}
