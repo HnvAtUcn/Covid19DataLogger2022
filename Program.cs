@@ -15,6 +15,8 @@ namespace Covid19DataLogger2022
         {
             // 1) Command line should be like: -settingsfile C:\\YourDataDirectory\\YourSettingsFile.json
             // 2) If no command line args, try to use the settings file in the project, Settings.json
+            //    (which will probably fail until you change the line: "DataSource": "SomeLocalSQLServer\\SomeSQLInstance"
+            //     to an existing MSSQL instance)
             // 3) If the settings file exists, construct new Covid19_DataLogger object from these settings
             // 4) Start logging (scraping) data with the Log(string Settings) method
             string SettingsPath = "";

@@ -96,79 +96,93 @@ namespace Covid19DataLogger2022
 
         private void GetCountryCodes(LoggerSettings ls)
         {
-            ls.conn.Open();
-
-            using (SqlCommand cmd = new(GetCountriesCommand, ls.conn))
+            try
             {
-                SqlDataReader isoCodes = cmd.ExecuteReader();
+                ls.conn.Open();
 
-                if (isoCodes.HasRows)
+                using (SqlCommand cmd = new(GetCountriesCommand, ls.conn))
                 {
-                    while (isoCodes.Read())
+                    SqlDataReader isoCodes = cmd.ExecuteReader();
+
+                    if (isoCodes.HasRows)
                     {
-                        string isoCode = isoCodes.GetString(0).Trim();
-                        ls.IsoCodeList.Add(isoCode);
+                        while (isoCodes.Read())
+                        {
+                            string isoCode = isoCodes.GetString(0).Trim();
+                            ls.IsoCodeList.Add(isoCode);
+                        }
                     }
                 }
+                ls.conn.Close();
             }
-            ls.conn.Close();
+            catch (SqlException e)
+            {
+                System.Environment.Exit(-1);
+            }
         }
 
         private bool InsertDates(LoggerSettings ls)
         {
             bool result = false;
-            ls.conn.Open();
-
-            DateTime FirstMissingDate;
-
-            SqlCommand getLastLogDate = new(LastLogDateString, ls.conn);
-            getLastLogDate.CommandType = CommandType.Text;
-            object o = getLastLogDate.ExecuteScalar();
-
-            if (o == null)
+            try
             {
-                // The DB seems to be empty. Start from scratch.
-                FirstMissingDate = DayZero;
-            }
-            else if (o is DateTime)
-            {
-                FirstMissingDate = (DateTime)o + NextDay;
-            }
-            else
-            {
-                return result;
-            }
+                ls.conn.Open();
 
-            ls.DaysTimeSpan = now - FirstMissingDate;
-            ls.DaysBack = ls.DaysTimeSpan.Days;
-            if (ls.DaysBack > 0) // We will insert days up to yesterday. Probably no data for today anyway
-            {
-                DateTime theday = FirstMissingDate;
-                // Step precisely 1 day forward
+                DateTime FirstMissingDate;
 
-                // This loop will run from FirstMissingDate to yesterday, incrementing theDay by 24 hours
-                for (int i = ls.DaysBack; i > 0; i--)
+                SqlCommand getLastLogDate = new(LastLogDateString, ls.conn);
+                getLastLogDate.CommandType = CommandType.Text;
+                object o = getLastLogDate.ExecuteScalar();
+
+                if (o == null)
                 {
-                    string SaveDate = USDateString(theday);
-
-                    try
-                    {
-                        using SqlCommand cmd2 = new("Save_Date", ls.conn);
-                        cmd2.CommandType = CommandType.StoredProcedure;
-                        cmd2.Parameters.AddWithValue("@date", SaveDate);
-                        int rowsAffected = cmd2.ExecuteNonQuery();
-                    }
-                    catch (Exception e)
-                    {
-                        Console.WriteLine(e.Message);
-                    }
-
-                    theday += NextDay;
+                    // The DB seems to be empty. Start from scratch.
+                    FirstMissingDate = DayZero;
                 }
-                result = true;
-            }
+                else if (o is DateTime)
+                {
+                    FirstMissingDate = (DateTime)o + NextDay;
+                }
+                else
+                {
+                    return result;
+                }
 
-            ls.conn.Close();
+                ls.DaysTimeSpan = now - FirstMissingDate;
+                ls.DaysBack = ls.DaysTimeSpan.Days;
+                if (ls.DaysBack > 0) // We will insert days up to yesterday. Probably no data for today anyway
+                {
+                    DateTime theday = FirstMissingDate;
+                    // Step precisely 1 day forward
+
+                    // This loop will run from FirstMissingDate to yesterday, incrementing theDay by 24 hours
+                    for (int i = ls.DaysBack; i > 0; i--)
+                    {
+                        string SaveDate = USDateString(theday);
+
+                        try
+                        {
+                            using SqlCommand cmd2 = new("Save_Date", ls.conn);
+                            cmd2.CommandType = CommandType.StoredProcedure;
+                            cmd2.Parameters.AddWithValue("@date", SaveDate);
+                            int rowsAffected = cmd2.ExecuteNonQuery();
+                        }
+                        catch (Exception e)
+                        {
+                            Console.WriteLine(e.Message);
+                        }
+
+                        theday += NextDay;
+                    }
+                    result = true;
+                }
+
+                ls.conn.Close();
+            }
+            catch (SqlException e)
+            {
+                System.Environment.Exit(-1);
+            }
             return result;
         }
 
@@ -193,95 +207,103 @@ namespace Covid19DataLogger2022
 
             foreach (string isoCode in ls.IsoCodeList)
             {
-                ls.conn.Open();
-
-                using SqlCommand getLastBadFunc = new("SELECT dbo.FirstBadDate(N'" + isoCode + "')", ls.conn);
                 try
                 {
-                    object o = getLastBadFunc.ExecuteScalar();
-                    if (o is DateTime) // IF days are missing, we request data from the first missing date
+                    ls.conn.Open();
+
+                    using SqlCommand getLastBadFunc = new("SELECT dbo.FirstBadDate(N'" + isoCode + "')", ls.conn);
+                    try
                     {
-                        DateTime LastBadDate = (DateTime)o;
-                        ls.DaysTimeSpan = now - LastBadDate;
-                        ls.DaysBack = ls.DaysTimeSpan.Days;
-
-                        int DaysBack;
-
-                        // If we should save the files, we will go all the way back to day zero
-                        if (ls.SaveFiles)
+                        object o = getLastBadFunc.ExecuteScalar();
+                        if (o is DateTime) // IF days are missing, we request data from the first missing date
                         {
-                            TimeSpan DaysBackToZero = now - DayZero;
-                            DaysBack = DaysBackToZero.Days;
+                            DateTime LastBadDate = (DateTime)o;
+                            ls.DaysTimeSpan = now - LastBadDate;
+                            ls.DaysBack = ls.DaysTimeSpan.Days;
+
+                            int DaysBack;
+
+                            // If we should save the files, we will go all the way back to day zero
+                            if (ls.SaveFiles)
+                            {
+                                TimeSpan DaysBackToZero = now - DayZero;
+                                DaysBack = DaysBackToZero.Days;
+                            }
+                            else
+                            {
+                                DaysBack = ls.DaysBack;
+                            }
+
+                            // Example theURI: https://disease.sh/v3/covid-19/historical/DK/?lastdays=599
+                            // string theURI = ClientString1 + isoCode + ClientString2 + ls.DaysBack.ToString();
+                            string theURI = ClientString1 + isoCode + ClientString2 + DaysBack.ToString();
+                            RestClient client = new RestClient(theURI);
+                            string jsonContents;
+                            request = new RestRequest(Method.GET);
+                            response_Stats = client.Execute(request);
+
+                            // Storing files is optional 
+                            if (ls.SaveFiles)
+                            {
+                                jsonContents = response_Stats.Content;
+                                // A unique filename per isoCode is created 
+                                string jsonpath = DataFolder + @"\" + isoCode + ".json";
+                                Console.WriteLine("Saving file: " + jsonpath);
+                                File.WriteAllText(jsonpath, jsonContents);
+                                // The country or state datafile was saved
+                            }
+
+                            // Here begins parsing of data from the response
+                            Console.WriteLine("Saving data for: " + isoCode + DB);
+                            jd = new JsonDeserializer();
+                            root = jd.Deserialize<dynamic>(response_Stats);
+                            timeline = root["timeline"];
+                            cases = timeline["cases"];
+                            deaths = timeline["deaths"];
+                            recovered = timeline["recovered"];
+
+                            ls.DayOfSave = LastBadDate;
+
+                            // This loop will run from LastBadDate to yesterday, incrementing theDay by 24 hours
+                            for (int i = ls.DaysBack; i > 0; i--)
+                            {
+                                ls.SaveDate = USDateString(ls.DayOfSave);
+                                try
+                                {
+                                    day_cases = cases[ls.SaveDate];
+                                    day_deaths = deaths[ls.SaveDate];
+                                    day_recovered = recovered[ls.SaveDate];
+
+                                    SaveStatData(ls, isoCode, day_cases, day_deaths, day_recovered);
+                                }
+                                catch (Exception e)
+                                {
+                                    Console.WriteLine(e.Message);
+                                }
+
+                                ls.DayOfSave += NextDay;
+                            }
                         }
                         else
                         {
-                            DaysBack = ls.DaysBack;
-                        }
-
-                        // Example theURI: https://disease.sh/v3/covid-19/historical/DK/?lastdays=599
-                        // string theURI = ClientString1 + isoCode + ClientString2 + ls.DaysBack.ToString();
-                        string theURI = ClientString1 + isoCode + ClientString2 + DaysBack.ToString();
-                        RestClient client = new RestClient(theURI);
-                        string jsonContents;
-                        request = new RestRequest(Method.GET);
-                        response_Stats = client.Execute(request);
-
-                        // Storing files is optional 
-                        if (ls.SaveFiles)
-                        {
-                            jsonContents = response_Stats.Content;
-                            // A unique filename per isoCode is created 
-                            string jsonpath = DataFolder + @"\" + isoCode + ".json";
-                            Console.WriteLine("Saving file: " + jsonpath);
-                            File.WriteAllText(jsonpath, jsonContents);
-                            // The country or state datafile was saved
-                        }
-
-                        // Here begins parsing of data from the response
-                        Console.WriteLine("Saving data for: " + isoCode + DB );
-                        jd = new JsonDeserializer();
-                        root = jd.Deserialize<dynamic>(response_Stats);
-                        timeline = root["timeline"];
-                        cases = timeline["cases"];
-                        deaths = timeline["deaths"];
-                        recovered = timeline["recovered"];
-
-                        ls.DayOfSave = LastBadDate;
-
-                        // This loop will run from LastBadDate to yesterday, incrementing theDay by 24 hours
-                        for (int i = ls.DaysBack; i > 0; i--)
-                        {
-                            ls.SaveDate = USDateString(ls.DayOfSave);
-                            try
-                            {
-                                day_cases = cases[ls.SaveDate];
-                                day_deaths = deaths[ls.SaveDate];
-                                day_recovered = recovered[ls.SaveDate];
-
-                                SaveStatData(ls, isoCode, day_cases, day_deaths, day_recovered);
-                            }
-                            catch (Exception e)
-                            {
-                                Console.WriteLine(e.Message);
-                            }
-
-                            ls.DayOfSave += NextDay;
+                            Console.WriteLine("Data OK for " + isoCode + DB);
                         }
                     }
-                    else
+                    catch (Exception e)
                     {
-                        Console.WriteLine("Data OK for " + isoCode + DB);
+                        Console.WriteLine(e.Message);
                     }
+
+                    ls.conn.Close();
+
+                    // Sometimes the REST Api server will bitch if you try too aggresively to download data - give it a 'rest' tee-hee
+                    //Thread.Sleep(Delay);
                 }
-                catch (Exception e)
+                catch (SqlException e)
                 {
-                    Console.WriteLine(e.Message);
+                    System.Environment.Exit(-1);
                 }
 
-                ls.conn.Close();
-
-                // Sometimes the REST Api server will bitch if you try too aggresively to download data - give it a 'rest' tee-hee
-                //Thread.Sleep(Delay);
             }
         }
 
@@ -302,15 +324,23 @@ namespace Covid19DataLogger2022
 
                 using (SqlConnection connection = new SqlConnection(ls.ConnString))
                 {
-                    connection.Open();
-                    using (SqlCommand cmd1 = new(sel, connection))
+                    try
                     {
-                        SqlDataReader sqlDataReader = cmd1.ExecuteReader();
-                        if (sqlDataReader.Read())
+                        connection.Open();
+                        using (SqlCommand cmd1 = new(sel, connection))
                         {
-                            ConfirmedYesterday = sqlDataReader.GetInt32(0);
-                            DeathsYesterday = sqlDataReader.GetInt32(1);
+                            SqlDataReader sqlDataReader = cmd1.ExecuteReader();
+                            if (sqlDataReader.Read())
+                            {
+                                ConfirmedYesterday = sqlDataReader.GetInt32(0);
+                                DeathsYesterday = sqlDataReader.GetInt32(1);
+                            }
                         }
+                        connection.Close();
+                    }
+                    catch (SqlException e)
+                    {
+                        System.Environment.Exit(-1);
                     }
                 }
             }
