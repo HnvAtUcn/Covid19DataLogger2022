@@ -98,7 +98,9 @@ namespace Covid19DataLogger2022
         {
             try
             {
+                Console.WriteLine("Trying to connect to database...\n");
                 ls.conn.Open();
+                Console.WriteLine("Connected!\n");
 
                 using (SqlCommand cmd = new(GetCountriesCommand, ls.conn))
                 {
@@ -115,8 +117,9 @@ namespace Covid19DataLogger2022
                 }
                 ls.conn.Close();
             }
-            catch (SqlException e)
+            catch (SqlException)
             {
+                Console.WriteLine("Could not connect!\n");
                 System.Environment.Exit(-1);
             }
         }
@@ -126,7 +129,9 @@ namespace Covid19DataLogger2022
             bool result = false;
             try
             {
+                Console.WriteLine("Trying to connect to database...\n");
                 ls.conn.Open();
+                Console.WriteLine("Connected!\n");
 
                 DateTime FirstMissingDate;
 
@@ -179,8 +184,9 @@ namespace Covid19DataLogger2022
 
                 ls.conn.Close();
             }
-            catch (SqlException e)
+            catch (SqlException)
             {
+                Console.WriteLine("Could not connect!\n");
                 System.Environment.Exit(-1);
             }
             return result;
@@ -209,7 +215,9 @@ namespace Covid19DataLogger2022
             {
                 try
                 {
+                    Console.WriteLine("Trying to connect to database...\n");
                     ls.conn.Open();
+                    Console.WriteLine("Connected!\n");
 
                     using SqlCommand getLastBadFunc = new("SELECT dbo.FirstBadDate(N'" + isoCode + "')", ls.conn);
                     try
@@ -299,9 +307,10 @@ namespace Covid19DataLogger2022
                     // Sometimes the REST Api server will bitch if you try too aggresively to download data - give it a 'rest' tee-hee
                     //Thread.Sleep(Delay);
                 }
-                catch (SqlException e)
+                catch (SqlException)
                 {
                     System.Environment.Exit(-1);
+                    Console.WriteLine("Could not connect!\n");
                 }
 
             }
