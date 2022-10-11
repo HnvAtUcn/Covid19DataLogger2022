@@ -33,7 +33,7 @@ namespace Covid19DataLogger2022
         private static List<SqlConnectionStringBuilder> ConnectionStrings = new List<SqlConnectionStringBuilder>();
 
         // SQL command for getting predefined countries (there should be 185 countries)
-        private string GetCountriesCommand = "SELECT Alpha_2_code, Id FROM GetAPICountries()";
+        private string GetCountriesCommand = "SELECT Alpha_2_code FROM GetAPICountries()";
 
         // SQL command for getting last date where logging took place (typically the day before yesterday)
         private string LastLogDateString = "SELECT TOP 1 date FROM DimDate ORDER BY date DESC";
@@ -60,7 +60,7 @@ namespace Covid19DataLogger2022
                 LoggerSettings loggerSettings = new LoggerSettings()
                 {
                     SaveFiles = StoreDatafiles,
-                    DataFolder = DataFolder,
+                    LogDataFolder = DataFolder,
                     ConnString = s.ConnectionString
                 };
 
@@ -77,7 +77,7 @@ namespace Covid19DataLogger2022
 
             // Initialize objects before using them in methods
             loggerSettings.conn = new SqlConnection(loggerSettings.ConnString);
-            loggerSettings.IsoCodeList = new List<DbIsoCode>();
+            loggerSettings.IsoCodeList = new List<string>();
             loggerSettings.DayOfSave = new();
             loggerSettings.DaysBack = new();
 
@@ -110,10 +110,8 @@ namespace Covid19DataLogger2022
                     {
                         while (isoCodes.Read())
                         {
-                            DbIsoCode dbIsoCode = new DbIsoCode();
-                            dbIsoCode.IsoCode = isoCodes.GetString(0).Trim();
-                            dbIsoCode.Id = isoCodes.GetInt32(1);
-                            ls.IsoCodeList.Add(dbIsoCode);
+                            string isoCode = isoCodes.GetString(0).Trim();
+                            ls.IsoCodeList.Add(isoCode);
                         }
                     }
                 }
@@ -213,7 +211,7 @@ namespace Covid19DataLogger2022
             SqlConnectionStringBuilder builder = new SqlConnectionStringBuilder(ls.ConnString); // Only used for printout
             string DB = "; Database " + builder.DataSource;
 
-            foreach (DbIsoCode dbIsoCode in ls.IsoCodeList)
+            foreach (string isoCode in ls.IsoCodeList)
             {
                 try
                 {
@@ -221,7 +219,7 @@ namespace Covid19DataLogger2022
                     ls.conn.Open();
                     Console.WriteLine("Connected!\n");
 
-                    using SqlCommand getLastBadFunc = new("SELECT dbo.FirstBadDate(N'" + dbIsoCode.IsoCode + "')", ls.conn);
+                    using SqlCommand getLastBadFunc = new("SELECT dbo.FirstBadDate(N'" + isoCode + "')", ls.conn);
                     try
                     {
                         object o = getLastBadFunc.ExecuteScalar();
@@ -246,7 +244,7 @@ namespace Covid19DataLogger2022
 
                             // Example theURI: https://disease.sh/v3/covid-19/historical/DK/?lastdays=599
                             // string theURI = ClientString1 + isoCode + ClientString2 + ls.DaysBack.ToString();
-                            string theURI = ClientString1 + dbIsoCode.IsoCode + ClientString2 + DaysBack.ToString();
+                            string theURI = ClientString1 + isoCode + ClientString2 + DaysBack.ToString();
                             RestClient client = new RestClient(theURI);
                             string jsonContents;
                             request = new RestRequest(Method.GET);
@@ -257,14 +255,14 @@ namespace Covid19DataLogger2022
                             {
                                 jsonContents = response_Stats.Content;
                                 // A unique filename per isoCode is created 
-                                string jsonpath = DataFolder + @"\" + dbIsoCode.IsoCode + ".json";
+                                string jsonpath = DataFolder + @"\" + isoCode + ".json";
                                 Console.WriteLine("Saving file: " + jsonpath);
                                 File.WriteAllText(jsonpath, jsonContents);
                                 // The country or state datafile was saved
                             }
 
                             // Here begins parsing of data from the response
-                            Console.WriteLine("Saving data for: " + dbIsoCode.IsoCode + DB);
+                            Console.WriteLine("Saving data for: " + isoCode + DB);
                             jd = new JsonDeserializer();
                             root = jd.Deserialize<dynamic>(response_Stats);
                             timeline = root["timeline"];
@@ -277,14 +275,14 @@ namespace Covid19DataLogger2022
                             // This loop will run from LastBadDate to yesterday, incrementing theDay by 24 hours
                             for (int i = ls.DaysBack; i > 0; i--)
                             {
-                                ls.DayOfSaveAsString = USDateString(ls.DayOfSave);
+                                ls.SaveDate = USDateString(ls.DayOfSave);
                                 try
                                 {
-                                    day_cases = cases[ls.DayOfSaveAsString];
-                                    day_deaths = deaths[ls.DayOfSaveAsString];
-                                    day_recovered = recovered[ls.DayOfSaveAsString];
+                                    day_cases = cases[ls.SaveDate];
+                                    day_deaths = deaths[ls.SaveDate];
+                                    day_recovered = recovered[ls.SaveDate];
 
-                                    SaveStatData(ls, dbIsoCode.IsoCode, day_cases, day_deaths, day_recovered);
+                                    SaveStatData(ls, isoCode, day_cases, day_deaths, day_recovered);
                                 }
                                 catch (Exception e)
                                 {
@@ -296,7 +294,7 @@ namespace Covid19DataLogger2022
                         }
                         else
                         {
-                            Console.WriteLine("Data OK for " + dbIsoCode.IsoCode + DB);
+                            Console.WriteLine("Data OK for " + isoCode + DB);
                         }
                     }
                     catch (Exception e)
@@ -314,12 +312,13 @@ namespace Covid19DataLogger2022
                     System.Environment.Exit(-1);
                     Console.WriteLine("Could not connect!\n");
                 }
+
             }
         }
 
         private void SaveStatData(LoggerSettings ls, string isoCode, long day_cases, long day_deaths, long day_recovered)
         {
-            if (ls.DayOfSaveAsString.Equals(USDateString(DayZero)))
+            if (ls.SaveDate.Equals(USDateString(DayZero)))
             {
                 ConfirmedYesterday = 0;
                 DeathsYesterday = 0;
@@ -348,7 +347,7 @@ namespace Covid19DataLogger2022
                         }
                         connection.Close();
                     }
-                    catch (SqlException)
+                    catch (SqlException e)
                     {
                         System.Environment.Exit(-1);
                     }
@@ -362,7 +361,7 @@ namespace Covid19DataLogger2022
             {
                 cmd2.CommandType = CommandType.StoredProcedure;
                 cmd2.Parameters.AddWithValue("@Alpha_2_code", isoCode);
-                cmd2.Parameters.AddWithValue("@date", ls.DayOfSaveAsString);
+                cmd2.Parameters.AddWithValue("@date", ls.SaveDate);
                 cmd2.Parameters.AddWithValue("@confirmed", day_cases);
                 cmd2.Parameters.AddWithValue("@deaths", day_deaths);
                 cmd2.Parameters.AddWithValue("@recovered", day_recovered);
