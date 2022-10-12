@@ -30,7 +30,7 @@ namespace Covid19DataLogger2022
         // Base folder for storage of coronavirus data - choose your own folder IF you want to save the data files
         private string DataFolder = @"D:\Data\coronavirus\stats\CountryStats";
 
-        private static List<SqlConnectionStringBuilder> ConnectionStrings = new List<SqlConnectionStringBuilder>();
+        private List<SqlConnectionStringBuilder> ConnectionStrings = new List<SqlConnectionStringBuilder>();
 
         // SQL command for getting predefined countries (there should be 185 countries)
         private string GetCountriesCommand = "SELECT Alpha_2_code FROM GetAPICountries()";
@@ -81,7 +81,7 @@ namespace Covid19DataLogger2022
             loggerSettings.DayOfSave = new();
             loggerSettings.DaysBack = new();
 
-            // In this first block of using the DB connection, we will read the country IsoCodes of the
+            // In this first method using the DB connection, we will read the country IsoCodes of the
             // (currently) 185 countries. These IsoCodes are a unique identifier for a country.
             // Example: 'DK' is Denmark
             GetCountryCodes(loggerSettings);
@@ -137,16 +137,16 @@ namespace Covid19DataLogger2022
 
                 SqlCommand getLastLogDate = new(LastLogDateString, ls.conn);
                 getLastLogDate.CommandType = CommandType.Text;
-                object o = getLastLogDate.ExecuteScalar();
+                object _obj = getLastLogDate.ExecuteScalar();
 
-                if (o == null)
+                if (_obj == null)
                 {
                     // The DB seems to be empty. Start from scratch.
                     FirstMissingDate = DayZero;
                 }
-                else if (o is DateTime)
+                else if (_obj is DateTime)
                 {
-                    FirstMissingDate = (DateTime)o + NextDay;
+                    FirstMissingDate = (DateTime)_obj + NextDay;
                 }
                 else
                 {
@@ -215,17 +215,15 @@ namespace Covid19DataLogger2022
             {
                 try
                 {
-                    Console.WriteLine("Trying to connect to database...\n");
                     ls.conn.Open();
-                    Console.WriteLine("Connected!\n");
 
                     using SqlCommand getLastBadFunc = new("SELECT dbo.FirstBadDate(N'" + isoCode + "')", ls.conn);
                     try
                     {
-                        object o = getLastBadFunc.ExecuteScalar();
-                        if (o is DateTime) // IF days are missing, we request data from the first missing date
+                        object _obj = getLastBadFunc.ExecuteScalar();
+                        if (_obj is DateTime) // IF days are missing, we request data from the first missing date
                         {
-                            DateTime LastBadDate = (DateTime)o;
+                            DateTime LastBadDate = (DateTime)_obj;
                             ls.DaysTimeSpan = now - LastBadDate;
                             ls.DaysBack = ls.DaysTimeSpan.Days;
 
@@ -386,19 +384,26 @@ namespace Covid19DataLogger2022
 
         private void ParseSettings(string settings)
         {
-            IRestResponse Settings;
+            // Using RestSharp. NOTE: Using v106. DO NOT upgrade to v107 or greater!!!
+
+            // The pair IRestResponse SettingsJson and JsonDeserializer jd are used in the following way:
+            // First, SettingsJson is used to create a JSON object from the string 'settings'.
+            // Then, jd is used to Deserialize the JSON object into a dynamic object dyn1. 
+            // Think of dyn1 as a C# object that (miraculously) holds the hierarchial structure and values of the JSON object.
+    
+            IRestResponse SettingsJson;
             JsonDeserializer jd;
             dynamic dyn1;
             dynamic dyn2;
             JsonArray al;
 
-            Settings = new RestResponse()
+            SettingsJson = new RestResponse()
             {
                 Content = settings
             };
 
             jd = new JsonDeserializer();
-            dyn1 = jd.Deserialize<dynamic>(Settings);
+            dyn1 = jd.Deserialize<dynamic>(SettingsJson);
 
             try
             {
